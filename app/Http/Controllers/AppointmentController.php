@@ -2,15 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Appointment;
-use App\Models\Prescription;
+use App\Services\AppointmentService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Crypt;
 
 class AppointmentController extends Controller
 {
+    protected AppointmentService $appointmentService;
+
+    public function __construct(AppointmentService $appointmentService)
+    {
+        $this->appointmentService = $appointmentService;
+    }
+
     // Patient Dashboard
     public function index()
     {
@@ -18,15 +23,7 @@ class AppointmentController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        $appointments = Appointment::where('user_id', Auth::id())->orderBy('appointment_date', 'asc')->get();
-
-        foreach ($appointments as $appointment) {
-            try {
-                $appointment->medical_notes = Crypt::decryptString($appointment->medical_notes);
-            } catch (\Exception $e) {
-                // Fallback for unencrypted data
-            }
-        }
+        $appointments = $this->appointmentService->getPatientAppointments();
 
         return view('dashboard', compact('appointments'));
     }
@@ -34,15 +31,7 @@ class AppointmentController extends Controller
     // Admin Dashboard View
     public function adminDashboard()
     {
-        $appointments = Appointment::with('user')->orderBy('appointment_date', 'asc')->get();
-
-        foreach ($appointments as $appointment) {
-            try {
-                $appointment->medical_notes = Crypt::decryptString($appointment->medical_notes);
-            } catch (\Exception $e) {
-                // Fallback
-            }
-        }
+        $appointments = $this->appointmentService->getAllAppointments();
 
         return view('admin.dashboard', compact('appointments'));
     }
@@ -50,13 +39,12 @@ class AppointmentController extends Controller
     // Accept Appointment
     public function accept($id)
     {
-        $appointment = Appointment::findOrFail($id);
-        $appointment->update([
-            'status' => 'Accepted',
-            'cancellation_reason' => null,
-        ]);
+        $this->appointmentService->acceptAppointment($id);
 
-        return redirect()->back()->with('success', 'Appointment accepted successfully!');
+        return redirect()->back()->with(
+            'success',
+            'Appointment accepted successfully!'
+        );
     }
 
     // Cancel Appointment with Reason
@@ -66,13 +54,15 @@ class AppointmentController extends Controller
             'cancellation_reason' => 'required|string|min:5',
         ]);
 
-        $appointment = Appointment::findOrFail($id);
-        $appointment->update([
-            'status' => 'Canceled',
-            'cancellation_reason' => $request->cancellation_reason,
-        ]);
+        $this->appointmentService->cancelAppointment(
+            $id,
+            $request->cancellation_reason
+        );
 
-        return redirect()->back()->with('success', 'Appointment canceled with reason recorded.');
+        return redirect()->back()->with(
+            'success',
+            'Appointment canceled with reason recorded.'
+        );
     }
 
     // Reschedule Appointment
@@ -83,20 +73,27 @@ class AppointmentController extends Controller
             'reschedule_time_slot' => 'required|string',
         ]);
 
-        $fullDateTime = Carbon::parse($request->reschedule_date_only . ' ' . $request->reschedule_time_slot);
+        $fullDateTime = Carbon::parse(
+            $request->reschedule_date_only . ' ' . $request->reschedule_time_slot
+        );
 
         if ($fullDateTime->isPast()) {
-            return redirect()->back()->withErrors(['reschedule_time_slot' => 'Cannot reschedule to a past time.']);
+            return redirect()->back()->withErrors([
+                'reschedule_time_slot' =>
+                    'Cannot reschedule to a past time.',
+            ]);
         }
 
-        $appointment = Appointment::findOrFail($id);
-        $appointment->update([
-            'appointment_date' => $fullDateTime,
-            'status' => 'Rescheduled',
-            'cancellation_reason' => null,
-        ]);
+        $this->appointmentService->rescheduleAppointment(
+            $id,
+            $request->reschedule_date_only,
+            $request->reschedule_time_slot
+        );
 
-        return redirect()->back()->with('success', 'Appointment rescheduled successfully!');
+        return redirect()->back()->with(
+            'success',
+            'Appointment rescheduled successfully!'
+        );
     }
 
     // Store New Patient Appointment
@@ -109,27 +106,38 @@ class AppointmentController extends Controller
             'medical_notes' => 'required|string|min:5',
         ]);
 
-        $fullDateTime = Carbon::parse($request->appointment_date_only . ' ' . $request->appointment_time_slot);
+        $fullDateTime = Carbon::parse(
+            $request->appointment_date_only . ' ' . $request->appointment_time_slot
+        );
 
         if ($fullDateTime->isPast()) {
-            return redirect()->back()->withErrors(['appointment_time_slot' => 'You cannot book a time slot in the past.'])->withInput();
+            return redirect()->back()
+                ->withErrors([
+                    'appointment_time_slot' =>
+                        'You cannot book a time slot in the past.',
+                ])
+                ->withInput();
         }
 
-        Appointment::create([
-            'user_id' => Auth::id(),
-            'doctor_name' => $request->doctor_name,
-            'appointment_date' => $fullDateTime,
-            'medical_notes' => Crypt::encryptString($request->medical_notes),
-            'status' => 'Pending',
-        ]);
+        $this->appointmentService->createAppointment(
+            $request->doctor_name,
+            $request->appointment_date_only,
+            $request->appointment_time_slot,
+            $request->medical_notes
+        );
 
-        return redirect()->back()->with('success', 'Appointment scheduled successfully!');
+        return redirect()->back()->with(
+            'success',
+            'Appointment scheduled successfully!'
+        );
     }
 
     // View Prescriptions
     public function prescriptions()
     {
-        $prescriptions = Prescription::where('user_id', Auth::id())->orderBy('prescribed_date', 'desc')->get();
+        $prescriptions =
+            $this->appointmentService->getPatientPrescriptions();
+
         return view('prescriptions.index', compact('prescriptions'));
     }
 }
