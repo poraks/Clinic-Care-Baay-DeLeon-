@@ -21,9 +21,9 @@
             box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
         }
         .tab-admin-active {
-            background-color: #d97706 !important;
+            background-color: #063ed9 !important;
             color: #ffffff !important;
-            border-color: #d97706 !important;
+            border-color: #2563eb !important;
             box-shadow: 0 2px 4px rgba(217, 119, 6, 0.2);
         }
         .tab-inactive {

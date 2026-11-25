@@ -15,12 +15,12 @@ class CheckRole
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        // 1. Ensure the user is logged in
+        // 1. If the user is not logged in, trigger custom 401 error page
         if (! $request->user()) {
-            return redirect()->route('login');
+            abort(401, 'Authentication required. Please log in to access this page.');
         }
 
-        // 2. Check if the user's role matches any of the allowed roles for this route
+        // 2. If the logged-in user's role is not allowed on this route, trigger custom 403 error page
         if (! in_array($request->user()->role, $roles, true)) {
             abort(403, 'Unauthorized access. You do not have permission to view this page.');
         }
